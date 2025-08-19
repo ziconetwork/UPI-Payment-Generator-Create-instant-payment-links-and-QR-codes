@@ -89,48 +89,136 @@ export default function PaymentLinkGenerator() {
       if (navigator.share) {
         // Use native sharing if available
         await navigator.share({
-          title: 'UPI Payment QR Code',
-          text: `Pay ₹${formData.amount} to ${formData.name || formData.upiId}`,
+          title: 'UPI Payment Request',
+          text: `Pay ₹${formData.amount} to ${formData.name || formData.upiId}\n${formData.message ? `For: ${formData.message}` : ''}\n\nUPI Link:`,
           url: upiLink
         });
-      } else {
-        // Fallback: copy link
-        await copyLink();
         setCopySuccess('shared');
+        setTimeout(() => setCopySuccess(''), 2000);
+      } else {
+        // Fallback for browsers without Web Share API
+        const shareText = `Pay ₹${formData.amount} to ${formData.name || formData.upiId}\n${formData.message ? `For: ${formData.message}` : ''}\n\nUPI Link: ${upiLink}`;
+        
+        await navigator.clipboard.writeText(shareText);
+        setCopySuccess('shared');
+        setTimeout(() => setCopySuccess(''), 2000);
+        alert('Payment details copied to clipboard! You can now paste it anywhere to share.');
       }
     } catch (err) {
       console.log('Sharing failed:', err);
-      // Fallback to copy
-      await copyLink();
+      // Final fallback
+      alert('Sharing not supported on this device. Use the Copy Link button instead.');
     }
   };
 
-  const downloadQR = () => {
-    if (!qrRef.current) return;
-    
-    const svg = qrRef.current.querySelector('svg');
-    if (!svg) return;
-
-    // Create canvas and draw QR code
+  const downloadReceipt = () => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const img = new Image();
     
-    canvas.width = 300;
-    canvas.height = 300;
+    // Set canvas size for receipt
+    canvas.width = 400;
+    canvas.height = 600;
     
-    img.onload = () => {
-      ctx?.drawImage(img, 0, 0, 300, 300);
+    if (!ctx) return;
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 400, 600);
+    
+    // Header background
+    ctx.fillStyle = '#3b82f6';
+    ctx.fillRect(0, 0, 400, 80);
+    
+    // Header text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('UPI Payment Receipt', 200, 35);
+    ctx.font = '14px Arial';
+    ctx.fillText('Scan QR or Use Link Below', 200, 55);
+    
+    // Content
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText('Payment Details:', 30, 120);
+    
+    // Payment info
+    ctx.font = '14px Arial';
+    let yPos = 150;
+    
+    if (formData.name) {
+      ctx.fillStyle = '#666666';
+      ctx.fillText('Recipient Name:', 30, yPos);
+      ctx.fillStyle = '#000000';
+      ctx.font = 'bold 14px Arial';
+      ctx.fillText(formData.name, 30, yPos + 20);
+      ctx.font = '14px Arial';
+      yPos += 50;
+    }
+    
+    ctx.fillStyle = '#666666';
+    ctx.fillText('UPI ID:', 30, yPos);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText(formData.upiId, 30, yPos + 20);
+    ctx.font = '14px Arial';
+    yPos += 50;
+    
+    ctx.fillStyle = '#666666';
+    ctx.fillText('Amount:', 30, yPos);
+    ctx.fillStyle = '#16a34a';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText(`₹${formData.amount}`, 30, yPos + 25);
+    ctx.font = '14px Arial';
+    yPos += 60;
+    
+    if (formData.message) {
+      ctx.fillStyle = '#666666';
+      ctx.fillText('Description:', 30, yPos);
+      ctx.fillStyle = '#000000';
+      ctx.font = 'bold 14px Arial';
+      ctx.fillText(formData.message, 30, yPos + 20);
+      yPos += 50;
+    }
+    
+    // QR Code section
+    const qrSize = 150;
+    const qrX = (400 - qrSize) / 2;
+    const qrY = yPos + 30;
+    
+    // QR background
+    ctx.fillStyle = '#f8f9fa';
+    ctx.fillRect(qrX - 10, qrY - 10, qrSize + 20, qrSize + 20);
+    ctx.strokeStyle = '#e5e5e5';
+    ctx.strokeRect(qrX - 10, qrY - 10, qrSize + 20, qrSize + 20);
+    
+    // Get QR code as image and draw it
+    const svg = qrRef.current?.querySelector('svg');
+    if (svg) {
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const img = new Image();
       
-      // Create download link
-      const link = document.createElement('a');
-      link.download = `UPI-QR-${formData.upiId}-${formData.amount}.png`;
-      link.href = canvas.toDataURL();
-      link.click();
-    };
-    
-    img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+      img.onload = () => {
+        ctx.drawImage(img, qrX, qrY, qrSize, qrSize);
+        
+        // Footer
+        ctx.fillStyle = '#666666';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Scan with any UPI app to pay', 200, qrY + qrSize + 30);
+        ctx.fillText(`Generated on ${new Date().toLocaleDateString()}`, 200, qrY + qrSize + 50);
+        ctx.fillText('Powered by Zico Network', 200, qrY + qrSize + 70);
+        
+        // Download
+        const link = document.createElement('a');
+        link.download = `UPI-Receipt-${formData.upiId}-${formData.amount}-${Date.now()}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+      };
+      
+      img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+    }
   };
 
   const resetForm = () => {
@@ -359,25 +447,29 @@ export default function PaymentLinkGenerator() {
                   </div>
                   <p className="text-xs text-gray-600 mt-3 mb-4">Scan with any UPI app to pay</p>
                   
-                  {/* QR Action Buttons - Mobile Optimized */}
+                  {/* QR Action Buttons - Updated with proper functionality */}
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
                     <button
                       onClick={shareQR}
-                      className="flex items-center justify-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-all shadow-md"
+                      className={`flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all shadow-md ${
+                        copySuccess === 'shared'
+                          ? 'bg-green-100 text-green-800 border border-green-300'
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
                       </svg>
-                      <span>Share QR</span>
+                      <span>{copySuccess === 'shared' ? 'Shared!' : 'Share Payment'}</span>
                     </button>
                     <button
-                      onClick={downloadQR}
+                      onClick={downloadReceipt}
                       className="flex items-center justify-center space-x-2 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 hover:border-gray-400 transition-all"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <span>Download</span>
+                      <span>Download Receipt</span>
                     </button>
                   </div>
                 </div>
